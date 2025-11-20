@@ -1,0 +1,58 @@
+{
+    "workflow_name": "Job Application Assistant Agent",
+    "framework": "LangGraph",
+    "architecture": "Sequential Multi-Agent Pipeline",
+    "entry_point": "parse_job",
+    "nodes": [
+      {
+        "id": "parse_job",
+        "name": "Job Parser Agent",
+        "function": "parse_job_description",
+        "purpose": "Extract job title, company, requirements, and skills from job description"
+      },
+      {
+        "id": "analyze_skills",
+        "name": "Skills Analyzer Agent",
+        "function": "analyze_skills_gap",
+        "purpose": "Compare resume with job requirements and calculate match score"
+      },
+      {
+        "id": "optimize_resume",
+        "name": "Resume Optimizer Agent",
+        "function": "optimize_resume",
+        "purpose": "Tailor resume using RAG (ChromaDB) to highlight relevant experience"
+      },
+      {
+        "id": "generate_cover_letter",
+        "name": "Cover Letter Generator Agent",
+        "function": "generate_cover_letter",
+        "purpose": "Create personalized cover letter based on job and resume"
+      },
+      {
+        "id": "save_application",
+        "name": "Tracker Agent",
+        "function": "save_application",
+        "purpose": "Persist application data to JSON and vector database"
+      }
+    ],
+    "edges": [
+      {"from": "parse_job", "to": "analyze_skills"},
+      {"from": "analyze_skills", "to": "optimize_resume"},
+      {"from": "optimize_resume", "to": "generate_cover_letter"},
+      {"from": "generate_cover_letter", "to": "save_application"},
+      {"from": "save_application", "to": "END"}
+    ],
+    "state_schema": {
+      "inputs": ["job_description", "job_url", "user_resume", "user_name", "user_email"],
+      "parsed_data": ["job_title", "company_name", "job_requirements", "job_skills"],
+      "analysis": ["skills_gap", "match_score"],
+      "outputs": ["tailored_resume", "cover_letter"],
+      "tracking": ["application_id", "application_status", "messages"]
+    },
+    "integrations": {
+      "llm": "OpenAI GPT-4",
+      "vector_db": "ChromaDB",
+      "ui": "Streamlit",
+      "storage": "JSON + Vector Store"
+    }
+  }

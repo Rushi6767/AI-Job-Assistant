@@ -17,7 +17,6 @@ __pycache__/
 data/
 *.pdf
 *.docx
-*.json
 
 # ChromaDB
 chroma_db/
