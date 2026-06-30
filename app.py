@@ -27,21 +27,21 @@ with st.sidebar:
     st.header("📄 Your Resume")
     
     # Name input
-    user_name = st.text_input("Your Name", value="John Doe")
+    user_name = st.text_input("Your Name", value="Rushi Sathavara")
     
     # Resume input options
     resume_option = st.radio(
         "Choose resume input method:",
-        ["Upload File (PDF/DOCX)", "Paste Text"]
+        ["Upload File (PDF/DOCX/TXT)", "Paste Text"]
     )
     
     user_resume = ""
     
-    if resume_option == "Upload File (PDF/DOCX)":
+    if resume_option == "Upload File (PDF/DOCX/TXT)":
         uploaded_file = st.file_uploader(
-            "Upload your resume",
-            type=['pdf', 'docx'],
-            help="Upload your resume in PDF or DOCX format"
+            "Upload Your Resume (PDF or TXT)",
+            type=['pdf', 'docx', 'txt'],
+            help="Upload your resume in PDF, DOCX, or TXT format"
         )
         
         if uploaded_file:
@@ -82,7 +82,7 @@ with tab1:
         )
         
         job_description = st.text_area(
-            "Job Description",
+            "Paste Job Description",
             height=300,
             placeholder="Paste the job description here...",
             help="Copy and paste the full job posting"
@@ -139,56 +139,102 @@ with tab1:
         with col2:
             st.metric("Company", result.get('company_name', 'N/A'))
         with col3:
-            match_score = result.get('match_score', 0) * 100
-            st.metric("Match Score", f"{match_score:.0f}%")
-        
-        # Skills gap
-        if result.get('skills_gap'):
-            st.warning(f"**Skills to Highlight:** {', '.join(result['skills_gap'][:5])}")
+            st.metric("Recommendation", result.get('recommendation', 'N/A'))
         
         # Tabs for outputs
-        output_tab1, output_tab2, output_tab3 = st.tabs(["📝 Tailored Resume", "✉️ Cover Letter", "🔍 Skills Analysis"])
+        output_tab1, output_tab2, output_tab3 = st.tabs(["📋 Quick Check", "📄 LaTeX Resume", "📝 Cover Letter"])
         
         with output_tab1:
-            st.subheader("Tailored Resume")
-            tailored_resume = result.get('tailored_resume', '')
-            st.text_area("", value=tailored_resume, height=400, key="resume_output")
-            st.download_button(
-                "📥 Download Resume",
-                tailored_resume,
-                file_name=f"resume_{result.get('company_name', 'company')}_{datetime.now().strftime('%Y%m%d')}.txt",
-                mime="text/plain"
-            )
+            st.subheader("Suitability Quick Check")
+            st.info(result.get('quick_check_result', 'No quick check result available.'))
+            
+            recommendation = result.get('recommendation', '').upper()
+            if recommendation == "SKIP":
+                st.error("⛔ Skipping resume generation — role has disqualifying requirements.")
         
         with output_tab2:
-            st.subheader("Cover Letter")
-            cover_letter = result.get('cover_letter', '')
-            st.text_area("", value=cover_letter, height=400, key="cover_letter_output")
-            st.download_button(
-                "📥 Download Cover Letter",
-                cover_letter,
-                file_name=f"cover_letter_{result.get('company_name', 'company')}_{datetime.now().strftime('%Y%m%d')}.txt",
-                mime="text/plain"
-            )
+            st.subheader("LaTeX Resume")
+            recommendation = result.get('recommendation', '').upper()
+            if recommendation == "SKIP":
+                st.warning("⚠️ No LaTeX resume generated due to SKIP recommendation.")
+            else:
+                latex_output = result.get('latex_resume', '')
+                st.code(latex_output, language="latex")
+                
+                # Dynamic filename extraction
+                company_fn = result.get('company_name') or 'Company'
+                role_fn = result.get('job_title') or 'Role'
+                import re
+                company_clean = re.sub(r'[^a-zA-Z0-9]', '_', company_fn).strip('_')
+                role_clean = re.sub(r'[^a-zA-Z0-9]', '_', role_fn).strip('_')
+                filename = f"Rushi_Sathavara_{company_clean}_{role_clean}.tex"
+                if not company_clean or not role_clean:
+                    filename = "Rushi_Sathavara_Resume.tex"
+                
+                # Download button
+                st.download_button(
+                    label="⬇️ Download .tex file",
+                    data=latex_output,
+                    file_name=filename,
+                    mime="text/plain"
+                )
+                
+                # Overleaf integration button
+                import base64
+                import urllib.parse
+                encoded_tex = base64.b64encode(latex_output.encode('utf-8')).decode('utf-8')
+                overleaf_url = f"https://www.overleaf.com/docs?snip_uri=data:application/x-tex;base64,{encoded_tex}"
+                st.link_button("🚀 Open in Overleaf", overleaf_url)
+                
+                # ATS Score details
+                st.divider()
+                st.subheader("ATS Score Details")
+                
+                ats_score_dict = result.get('ats_score', {})
+                score = ats_score_dict.get('score', 0)
+                if not score and result.get('match_score') is not None:
+                    score = int(result['match_score'] * 100)
+                
+                st.metric("ATS Match Score", f"{score}/100")
+                
+                col_match, col_miss = st.columns(2)
+                with col_match:
+                    st.markdown("**Matched keywords:**")
+                    matched_kws = result.get('matched_keywords', [])
+                    if matched_kws:
+                        for kw in matched_kws:
+                            st.markdown(f"- ✅ {kw}")
+                    else:
+                        st.markdown("- None detected")
+                with col_miss:
+                    st.markdown("**Missing keywords:**")
+                    missing_kws = result.get('missing_keywords', [])
+                    if missing_kws:
+                        for kw in missing_kws:
+                            st.markdown(f"- ⚠️ {kw}")
+                    else:
+                        st.success("✅ No missing keywords detected!")
+                        
+                # Skills gap summary
+                if matched_kws or missing_kws:
+                    total_kws = len(matched_kws) + len(missing_kws)
+                    missing_str = ", ".join(missing_kws[:5])
+                    st.markdown(f"**Skills Gap Summary:** You match {len(matched_kws)}/{total_kws} keywords. Missing: {missing_str}. Consider adding these to your profile if you have relevant experience.")
         
         with output_tab3:
-            st.subheader("Skills Analysis")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("**Required Skills:**")
-                for skill in result.get('job_skills', [])[:10]:
-                    st.markdown(f"- {skill}")
-            
-            with col2:
-                st.markdown("**Skills Gap:**")
-                skills_gap = result.get('skills_gap', [])
-                if skills_gap:
-                    for skill in skills_gap[:10]:
-                        st.markdown(f"- ⚠️ {skill}")
-                else:
-                    st.success("✅ Great match! No major skills gaps detected.")
+            st.subheader("Cover Letter")
+            recommendation = result.get('recommendation', '').upper()
+            if recommendation == "SKIP":
+                st.warning("⚠️ No cover letter generated due to SKIP recommendation.")
+            else:
+                cover_letter = result.get('cover_letter', '')
+                st.text_area("", value=cover_letter, height=400, key="cover_letter_output")
+                st.download_button(
+                    "📥 Download Cover Letter",
+                    cover_letter,
+                    file_name=f"cover_letter_{result.get('company_name', 'company')}_{datetime.now().strftime('%Y%m%d')}.txt",
+                    mime="text/plain"
+                )
 
 # Tab 2: Application Tracker
 with tab2:

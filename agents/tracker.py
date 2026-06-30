@@ -24,16 +24,19 @@ def save_application(state: ApplicationState) -> ApplicationState:
     # Create application record
     app_id = f"app_{len(applications) + 1}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
+    has_latex = bool(state.get("latex_resume"))
+    has_tailored = bool(state.get("tailored_resume")) or has_latex
+    
     application = {
         "id": app_id,
         "job_title": state.get("job_title", ""),
         "company": state.get("company_name", ""),
         "job_url": state.get("job_url", ""),
         "status": state.get("application_status", "drafted"),
-        "match_score": state.get("match_score", 0.0),
+        "match_score": state.get("match_score") if state.get("match_score") is not None else 0.0,
         "skills_gap": state.get("skills_gap", []),
         "date_created": datetime.now().isoformat(),
-        "has_tailored_resume": bool(state.get("tailored_resume")),
+        "has_tailored_resume": has_tailored,
         "has_cover_letter": bool(state.get("cover_letter"))
     }
     
@@ -44,16 +47,17 @@ def save_application(state: ApplicationState) -> ApplicationState:
         json.dump(applications, f, indent=2)
     
     # Add to vector store for future RAG
-    if state.get("tailored_resume") and state.get("cover_letter"):
+    resume_content = state.get("latex_resume") or state.get("tailored_resume", "")
+    if resume_content and state.get("cover_letter"):
         vector_store.add_application(
             app_id=app_id,
             job_title=state.get("job_title", ""),
             company=state.get("company_name", ""),
-            resume=state.get("tailored_resume", ""),
+            resume=resume_content,
             cover_letter=state.get("cover_letter", ""),
             metadata={
                 "status": state.get("application_status", "drafted"),
-                "match_score": state.get("match_score", 0.0)
+                "match_score": state.get("match_score") if state.get("match_score") is not None else 0.0
             }
         )
     
@@ -64,7 +68,41 @@ def save_application(state: ApplicationState) -> ApplicationState:
         "content": f"Application saved with ID: {app_id}"
     })
     
+    # Append to tracker.md
+    append_to_tracker_md(state)
+    
     return state
+
+
+def append_to_tracker_md(state: ApplicationState):
+    """Append a row representing this run to tracker.md"""
+    file_path = "tracker.md"
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    company = state.get("company_name") or "N/A"
+    role = state.get("job_title") or "N/A"
+    recommendation = state.get("recommendation") or "N/A"
+    
+    ats_dict = state.get("ats_score")
+    if ats_dict and "score" in ats_dict:
+        ats_score = f"{ats_dict['score']}/100"
+    elif state.get("match_score") is not None:
+        ats_score = f"{int(state['match_score'] * 100)}/100"
+    else:
+        ats_score = "N/A"
+        
+    has_latex_str = "Yes" if state.get("latex_resume") else "No"
+    
+    row = f"| {date_str} | {company} | {role} | {recommendation} | {ats_score} | {has_latex_str} |\n"
+    
+    if not os.path.exists(file_path):
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("# Job Application Tracker\n\n")
+            f.write("| Date | Company | Role | Recommendation | ATS Score | LaTeX Generated |\n")
+            f.write("| --- | --- | --- | --- | --- | --- |\n")
+            
+    with open(file_path, "a", encoding="utf-8") as f:
+        f.write(row)
+
 
 
 def load_applications() -> list:

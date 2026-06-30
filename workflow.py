@@ -3,12 +3,11 @@ LangGraph Workflow for Job Application Assistant Agent
 This orchestrates all agents in a coordinated workflow
 """
 from langgraph.graph import StateGraph, END
-from state import ApplicationState
-from agents.job_parser import parse_job_description
-from agents.skills_analyzer import analyze_skills_gap
-from agents.resume_optimizer import optimize_resume
+from state import GraphState
+from agents.quick_check import quick_check_agent
+from agents.resume_latex import resume_latex_agent
 from agents.cover_letter import generate_cover_letter
-from agents.tracker import save_application
+from agents.ats_scorer import ats_score_agent
 
 
 def create_workflow():
@@ -16,32 +15,46 @@ def create_workflow():
     Create the LangGraph workflow that orchestrates all agents
     
     Workflow:
-    1. Parse Job Description -> Extract requirements
-    2. Analyze Skills Gap -> Compare resume with job
-    3. Optimize Resume -> Tailor resume
+    1. Quick Suitability Check -> Evaluate JD background & hard blockers
+    2. Route Conditional -> SKIP stops workflow, APPLY/MAYBE continues
+    3. Generate LaTeX Resume -> Tailor Rushi's details into compilable LaTeX
     4. Generate Cover Letter -> Create personalized letter
-    5. Save Application -> Store in tracking system
+    5. ATS Match Score -> Calculate keyword matches and save application
     """
     
     # Create the graph
-    workflow = StateGraph(ApplicationState)
+    workflow = StateGraph(GraphState)
     
     # Add nodes (agents)
-    workflow.add_node("parse_job", parse_job_description)
-    workflow.add_node("analyze_skills", analyze_skills_gap)
-    workflow.add_node("optimize_resume", optimize_resume)
+    workflow.add_node("quick_check", quick_check_agent)
+    workflow.add_node("resume_latex", resume_latex_agent)
     workflow.add_node("generate_cover_letter", generate_cover_letter)
-    workflow.add_node("save_application", save_application)
+    workflow.add_node("ats_score", ats_score_agent)
     
     # Define the flow
-    workflow.set_entry_point("parse_job")
+    workflow.set_entry_point("quick_check")
     
-    # Sequential flow
-    workflow.add_edge("parse_job", "analyze_skills")
-    workflow.add_edge("analyze_skills", "optimize_resume")
-    workflow.add_edge("optimize_resume", "generate_cover_letter")
-    workflow.add_edge("generate_cover_letter", "save_application")
-    workflow.add_edge("save_application", END)
+    # Conditional routing
+    def should_continue(state: GraphState):
+        recommendation = state.get("recommendation", "MAYBE").upper()
+        if recommendation == "SKIP":
+            return "end"
+        else:
+            return "continue"
+            
+    workflow.add_conditional_edges(
+        "quick_check",
+        should_continue,
+        {
+            "end": END,
+            "continue": "resume_latex"
+        }
+    )
+    
+    # Remaining steps
+    workflow.add_edge("resume_latex", "generate_cover_letter")
+    workflow.add_edge("generate_cover_letter", "ats_score")
+    workflow.add_edge("ats_score", END)
     
     # Compile the workflow
     app = workflow.compile()
@@ -50,7 +63,7 @@ def create_workflow():
 
 
 def run_workflow(job_description: str, user_resume: str, 
-                user_name: str = "Applicant", job_url: str = ""):
+                 user_name: str = "Applicant", job_url: str = ""):
     """
     Run the complete workflow
     
@@ -66,19 +79,34 @@ def run_workflow(job_description: str, user_resume: str,
     
     # Initialize state
     initial_state = {
-        "job_description": job_description,
+        # Inputs
+        "jd_text": job_description,
+        "resume_text": user_resume,
+        "job_description": job_description,  # compatibility
+        "user_resume": user_resume,          # compatibility
         "job_url": job_url,
-        "user_resume": user_resume,
         "user_name": user_name,
         "user_email": None,
+        
+        # Parsed job info
         "job_title": None,
         "company_name": None,
         "job_requirements": [],
         "job_skills": [],
+        
+        # Outputs
+        "quick_check_result": "",
+        "recommendation": "",
+        "latex_resume": "",
         "tailored_resume": None,
         "cover_letter": None,
         "skills_gap": [],
         "match_score": None,
+        "ats_score": {},
+        "matched_keywords": [],
+        "missing_keywords": [],
+        
+        # Tracking
         "application_id": None,
         "application_status": "drafted",
         "messages": []

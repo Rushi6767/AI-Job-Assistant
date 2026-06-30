@@ -32,13 +32,19 @@ def parse_docx(file_path: str) -> str:
 
 
 def parse_resume(file_path: str) -> str:
-    """Parse resume file (PDF or DOCX)"""
+    """Parse resume file (PDF, DOCX, or TXT)"""
     if file_path.lower().endswith('.pdf'):
         return parse_pdf(file_path)
     elif file_path.lower().endswith('.docx'):
         return parse_docx(file_path)
+    elif file_path.lower().endswith('.txt'):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                return file.read().strip()
+        except Exception as e:
+            return f"Error parsing TXT: {str(e)}"
     else:
-        return "Unsupported file format. Please upload PDF or DOCX."
+        return "Unsupported file format. Please upload PDF, DOCX, or TXT."
 
 
 def parse_text_resume(text: str) -> str:
